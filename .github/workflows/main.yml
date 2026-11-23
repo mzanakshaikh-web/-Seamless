@@ -2,18 +2,16 @@
 name: Build Seamless APK
 
 on:
+  workflow_dispatch:
   push:
     branches:
       - main
-      - master
-  workflow_dispatch:
 
 permissions:
   contents: read
 
 jobs:
   build:
-    name: Build Android APK
     runs-on: ubuntu-latest
 
     steps:
@@ -24,36 +22,44 @@ jobs:
         uses: actions/setup-java@v4
         with:
           distribution: temurin
-          java-version: '17'
+          java-version: 17
 
-      - name: Verify Android SDK
-        shell: bash
-        run: |
-          SDK="${ANDROID_HOME:-${ANDROID_SDK_ROOT:-/usr/local/lib/android/sdk}}"
-
-          echo "Android SDK: $SDK"
-
-          if [ ! -d "$SDK/platforms/android-35" ]; then
-            echo "Android SDK platform 35 is missing."
-            exit 1
-          fi
-
-          if [ ! -d "$SDK/build-tools/35.0.0" ]; then
-            echo "Android build-tools 35.0.0 are missing."
-            exit 1
-          fi
-
-      - name: Set up Gradle 8.9
+      - name: Set up Gradle
         uses: gradle/actions/setup-gradle@v4
         with:
-          gradle-version: '8.9'
+          gradle-version: 8.9
+
+      - name: Find Android project
+        shell: bash
+        run: |
+          PROJECT_DIR=""
+
+          while IFS= read -r file; do
+            PROJECT_DIR="$(dirname "$file")"
+            break
+          done < <(find . -type f \
+            \( -name settings.gradle \
+            -o -name settings.gradle.kts \) \
+            -not -path '*/.gradle/*' \
+            -not -path '*/build/*' \
+            | sort)
+
+          if [ -z "$PROJECT_DIR" ]; then
+            echo "ERROR: No Gradle settings file found."
+            echo "Check that the Android project is uploaded to GitHub."
+            exit 1
+          fi
+
+          echo "Android project found at: $PROJECT_DIR"
+          echo "PROJECT_DIR=$PROJECT_DIR" >> "$GITHUB_ENV"
 
       - name: Build Seamless APK
-        run: gradle --no-daemon --stacktrace assembleRelease
+        run: gradle --no-daemon assembleDebug
+        working-directory: ${{ env.PROJECT_DIR }}
 
       - name: Upload Seamless APK
         uses: actions/upload-artifact@v4
         with:
           name: Seamless-APK
-          path: app/build/outputs/apk/release/*.apk
+          path: ${{ env.PROJECT_DIR }}/app/build/outputs/apk/debug/*.apk
           if-no-files-found: error
