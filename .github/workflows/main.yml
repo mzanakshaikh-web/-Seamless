@@ -2,10 +2,10 @@
 name: Build Seamless APK
 
 on:
-  workflow_dispatch:
   push:
     branches:
       - main
+  workflow_dispatch:
 
 permissions:
   contents: read
@@ -22,44 +22,44 @@ jobs:
         uses: actions/setup-java@v4
         with:
           distribution: temurin
-          java-version: 17
+          java-version: '17'
+
+      - name: Extract Android source
+        shell: bash
+        run: |
+          set -e
+
+          ZIP_FILE="Seamless-Polished-Source.zip"
+
+          if [ ! -f "$ZIP_FILE" ]; then
+            echo "ERROR: Source ZIP not found."
+            echo "Expected: $ZIP_FILE"
+            echo "Files in repository:"
+            ls -la
+            exit 1
+          fi
+
+          mkdir -p source
+          unzip -q "$ZIP_FILE" -d source
+
+          if [ ! -f source/settings.gradle ]; then
+            echo "ERROR: settings.gradle not found after extraction."
+            find source -maxdepth 4 -type f
+            exit 1
+          fi
 
       - name: Set up Gradle
         uses: gradle/actions/setup-gradle@v4
         with:
-          gradle-version: 8.9
-
-      - name: Find Android project
-        shell: bash
-        run: |
-          PROJECT_DIR=""
-
-          while IFS= read -r file; do
-            PROJECT_DIR="$(dirname "$file")"
-            break
-          done < <(find . -type f \
-            \( -name settings.gradle \
-            -o -name settings.gradle.kts \) \
-            -not -path '*/.gradle/*' \
-            -not -path '*/build/*' \
-            | sort)
-
-          if [ -z "$PROJECT_DIR" ]; then
-            echo "ERROR: No Gradle settings file found."
-            echo "Check that the Android project is uploaded to GitHub."
-            exit 1
-          fi
-
-          echo "Android project found at: $PROJECT_DIR"
-          echo "PROJECT_DIR=$PROJECT_DIR" >> "$GITHUB_ENV"
+          gradle-version: '8.9'
 
       - name: Build Seamless APK
-        run: gradle --no-daemon assembleDebug
-        working-directory: ${{ env.PROJECT_DIR }}
+        run: gradle --no-daemon --stacktrace assembleDebug
+        working-directory: source
 
       - name: Upload Seamless APK
         uses: actions/upload-artifact@v4
         with:
           name: Seamless-APK
-          path: ${{ env.PROJECT_DIR }}/app/build/outputs/apk/debug/*.apk
+          path: source/app/build/outputs/apk/debug/*.apk
           if-no-files-found: error
